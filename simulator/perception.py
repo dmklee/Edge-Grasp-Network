@@ -2,7 +2,8 @@ from math import cos, sin
 import time
 import numpy as np
 import open3d as o3d
-from transform import Transform
+from simulator.transform import Transform
+
 
 class CameraIntrinsic(object):
     """Intrinsic parameters of a pinhole camera model.

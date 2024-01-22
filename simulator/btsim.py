@@ -2,8 +2,9 @@ from pybullet_utils import bullet_client
 import time
 import numpy as np
 import pybullet
-from transform import Transform,Rotation
+from simulator.transform import Transform, Rotation
 assert pybullet.isNumpyEnabled(), "Pybullet needs to be built with NumPy"
+
 
 class BtWorld(object):
     """Interface to a PyBullet physics server.
@@ -32,9 +33,9 @@ class BtWorld(object):
         self.bodies[body.uid] = body
         return body
 
-    def load_obj(self, urdf_path, pose, scale=1.0,):
+    def load_obj(self, path, pose, scale=1.0,):
         # the plane don't have mass
-        body = Body.from_obj(self.p, urdf_path, pose, scale)
+        body = Body.from_obj(self.p, path, pose, scale)
         self.bodies[body.uid] = body
         return body
 
@@ -52,6 +53,7 @@ class BtWorld(object):
         return camera
 
     def get_contacts(self, bodyA):
+        self.p.performCollisionDetection()
         points = self.p.getContactPoints(bodyA.uid)
         contacts = []
         for point in points:
