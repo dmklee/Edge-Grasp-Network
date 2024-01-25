@@ -2,6 +2,7 @@ import os
 import time
 import sys
 from pathlib import Path
+import numpy as np
 import pybullet
 from simulator.perception import CameraIntrinsic, TSDFVolume, camera_on_sphere
 from simulator.btsim import BtWorld
