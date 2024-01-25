@@ -5,7 +5,7 @@ pip install numpy open3d pybullet
 
 ## Generate Data
 ```
-python clutter_grasp_data_generator --object_set=<object_set>
+python clutter_grasp_data_generator.py --object_set=<object_set>
 ```
 Select object set from "berkeley\_adversarial" and "graspnet1B".
 
