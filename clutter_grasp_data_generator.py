@@ -145,15 +145,20 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dest", type=str, default="./grasp_data")
-    parser.add_argument("--num_grasps", type=int, default=1000)
-    parser.add_argument("--attempts_per_scene", type=int, default=50)
-    parser.add_argument("--num_objects", type=int, default=1)
+    parser.add_argument("--dest", type=str, default="./grasp_data",
+                       help="Folder where data is saved")
+    parser.add_argument("--num_grasps", type=int, default=1000,
+                       help="Number of grasps simulated (even 50% split of success/failure)")
+    parser.add_argument("--attempts_per_scene", type=int, default=50,
+                       help="Number of grasps simulated per scene reset")
+    parser.add_argument("--num_objects", type=int, default=1,
+                       help="Number of objects placed in each scene")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object_set", type=str, default="graspnet1B",
                         choices=["berkeley_adversarial", "graspnet1B-train", "graspnet1B-val", "graspnet1B"])
-    parser.add_argument("--gui", action="store_true", default= False)
-    parser.add_argument("--include_table", action="store_true", default= False)
+    parser.add_argument("--gui", action="store_true", default=False)
+    parser.add_argument("--include_table", action="store_true", default=False,
+                       help="If True, include table in point clouds")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     main(args)
