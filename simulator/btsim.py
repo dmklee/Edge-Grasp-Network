@@ -138,37 +138,24 @@ class Body(object):
         obj_volume_max = 0.0006 * (scale ** 3)  # the maximum volume of an obj before scaling
         obj_scale = scale
         #print(str(obj_filepath))
-        while True:
-            obj_visual = pb.createVisualShape(pb.GEOM_MESH,
-                                              fileName=str(obj_filepath),
-                                              rgbaColor=color,
-                                              meshScale=[obj_scale, obj_scale, obj_scale])
+        obj_visual = pb.createVisualShape(pb.GEOM_MESH,
+                                          fileName=str(obj_filepath),
+                                          rgbaColor=color,
+                                          meshScale=[obj_scale, obj_scale, obj_scale])
 
-            obj_collision = pb.createCollisionShape(pb.GEOM_MESH,
-                                                    fileName=str(obj_filepath),
-                                                    meshScale=[obj_scale, obj_scale, obj_scale])
+        obj_collision = pb.createCollisionShape(pb.GEOM_MESH,
+                                                fileName=str(obj_filepath),
+                                                meshScale=[obj_scale, obj_scale, obj_scale])
 
-            object_id = pb.createMultiBody(baseMass=0.15,
-                                           baseCollisionShapeIndex=obj_collision,
-                                           baseVisualShapeIndex=obj_visual,
-                                           basePosition=pose.translation,
-                                           baseOrientation=pose.rotation.as_quat())
+        object_id = pb.createMultiBody(baseMass=0.15,
+                                       baseCollisionShapeIndex=obj_collision,
+                                       baseVisualShapeIndex=obj_visual,
+                                       basePosition=pose.translation,
+                                       baseOrientation=pose.rotation.as_quat())
 
-            aabb = pb.getAABB(object_id)
-            aabb = np.asarray(aabb)
-            size = aabb[1] - aabb[0]
-
-            if np.partition(size, -2)[-2] > obj_edge_max:
-                obj_scale *= 0.8
-                pb.removeBody(object_id)
-            elif size[0] * size[1] * size[2] > obj_volume_max:
-                obj_scale *= 0.85
-                pb.removeBody(object_id)
-            elif size.min() < obj_edge_min:
-                obj_scale /= 0.95
-                pb.removeBody(object_id)
-            else:
-                break
+        aabb = pb.getAABB(object_id)
+        aabb = np.asarray(aabb)
+        size = aabb[1] - aabb[0]
 
         pb.changeDynamics(object_id, -1, lateralFriction=0.75, spinningFriction=0.001, rollingFriction=0.001,linearDamping=0.0)
         return cls(pb, object_id)

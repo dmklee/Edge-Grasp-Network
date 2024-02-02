@@ -44,18 +44,19 @@ def main(args):
     num_grasps = 0
     scene_id = 0
     while num_grasps < args.num_grasps:
-        object_count = rng.poisson(args.num_objects) + 1
-        sim.reset(object_count)
+        sim.reset(args.num_objects)
         sim.save_state()
 
         # render point clouds
-        n = rng.choice(a=[1, 2, 3], p=[0.6, 0.2, 0.2])
+        n = rng.choice(a=[1, 2, 3], p=[0.1, 0.6, 0.3])
         depth_imgs, extrinsics, eye = render_images(sim, n, rng)
 
         # reconstrct point cloud using a subset of the images
         tsdf = create_tsdf(sim.size, 180, depth_imgs, sim.camera.intrinsic, extrinsics)
         pc = tsdf.get_cloud()
-        bounding_box = o3d.geometry.AxisAlignedBoundingBox(sim.lower, sim.upper)
+        lower = sim.lower if args.include_table else np.add(sim.lower, (0, 0, 0.005))
+        bounding_box = o3d.geometry.AxisAlignedBoundingBox(lower, sim.upper)
+
         pc = pc.crop(bounding_box)
         # o3d.visualization.draw_geometries([pc])
 
@@ -74,10 +75,11 @@ def main(args):
         pc.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
         pc.orient_normals_consistent_tangent_plane(20)
 
+        pc = pc.voxel_down_sample(voxel_size=0.002)
         vertices = np.asarray(pc.points)
-        if len(vertices) < 300:
+        if len(vertices) < 512:
+            print('Too few points in pointcloud')
             continue
-        pc = pc.voxel_down_sample(voxel_size=0.0045)
 
         poses = np.eye(4)[None]
         # sample position in collision and random orientation
@@ -98,6 +100,22 @@ def main(args):
 
         labels = np.zeros(len(poses), dtype=bool)
         widths = np.zeros(len(poses), dtype=np.float32)
+
+
+        # gripper_pts = np.array([
+            # [0, 0.04, 0],
+            # [0, -0.04, 0],
+            # [0, 0.04, -0.05],
+            # [0, -0.04, -0.05],
+            # [0, 0.0, -0.05],
+        # ])
+        # gripper = o3d.geometry.PointCloud()
+        # gripper.points = o3d.utility.Vector3dVector(Transform.from_matrix(poses[0]).transform_point(gripper_pts))
+        # gripper.paint_uniform_color([1, 0.2, 0.1])
+        # pc.paint_uniform_color([0.2, 0.2, 1])
+        # o3d.visualization.draw_geometries([pc, gripper])
+        # exit()
+
         for i, pose in enumerate(poses):
             sim.restore_state()
             label, width = sim.execute_grasp(Transform.from_matrix(pose), remove=False)
@@ -129,11 +147,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dest", type=str, default="./grasp_data")
     parser.add_argument("--num_grasps", type=int, default=1000)
-    parser.add_argument("--attempts_per_scene", type=int, default=100)
-    parser.add_argument("--num_objects", type=int, default=4)
+    parser.add_argument("--attempts_per_scene", type=int, default=50)
+    parser.add_argument("--num_objects", type=int, default=1)
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
-    parser.add_argument("--object_set", type=str, default="berkeley_adversarial")
+    parser.add_argument("--object_set", type=str, default="graspnet1B",
+                        choices=["berkeley_adversarial", "graspnet1B-train", "graspnet1B-val", "graspnet1B"])
     parser.add_argument("--gui", action="store_true", default= False)
+    parser.add_argument("--include_table", action="store_true", default= False)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     main(args)

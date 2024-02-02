@@ -14,12 +14,20 @@ class ClutterRemovalSim(object):
     def __init__(self, scene, obj_folder, gui=True, rng=None):
         assert scene in ["pile", "packed"]
         self.urdf_root = Path("./data_robot/urdfs")
-        self.obj_root = Path('./data_robot') / obj_folder
-        self.obj_files = list(self.obj_root.glob('*.obj'))
+        if '-' in obj_folder:
+            obj_folder, mode = obj_folder.split('-')
+            self.obj_root = Path('./data_robot') / obj_folder
+            obj_files = list(sorted(self.obj_root.glob('*.obj')))
+            L = int(0.8*len(obj_files))
+            self.obj_files = obj_files[:L] if mode=='train' else obj_files[L:]
+        else:
+            self.obj_root = Path('./data_robot') / obj_folder
+            self.obj_files = list(sorted(self.obj_root.glob('*.obj')))
+
         self.scene = scene
 
         # get the list of urdf files or obj files
-        self.global_scaling = 1.5 if obj_folder == 'berkeley_adversarial' else 1.0
+        self.global_scaling = 1.2 if obj_folder == 'berkeley_adversarial' else 1.2
         self.gui = gui
         self.rng = rng or np.random.RandomState()
         self.world = BtWorld(self.gui)
@@ -70,7 +78,7 @@ class ClutterRemovalSim(object):
         # define valid volume for sampling grasps
         lx, ux = 0.02, self.size - 0.02
         ly, uy = 0.02, self.size - 0.02
-        lz, uz = height-0.001, self.size
+        lz, uz = height, self.size
         self.lower = np.r_[lx, ly, lz]
         self.upper = np.r_[ux, uy, uz]
 
@@ -109,7 +117,10 @@ class ClutterRemovalSim(object):
             x = self.rng.uniform(0.08, 0.22)
             y = self.rng.uniform(0.08, 0.22)
             z = 1.0
-            rotation = Rotation.random(random_state=self.rng)
+            if self.rng.random() < 0.3:
+                rotation = Rotation.from_euler('xz', (-np.pi/2, self.rng.uniform(0, 2*np.pi)))
+            else:
+                rotation = Rotation.random(random_state=self.rng)
             pose = Transform(rotation, np.r_[x, y, z])
             scale = self.rng.uniform(0.8, 1.0)
             body = self.world.load_obj(obj, pose, scale=self.global_scaling * scale)
@@ -264,13 +275,30 @@ class Gripper(object):
         self.T_body_tcp = Transform(Rotation.identity(), [0.0, 0.0, 0.015 + self.finger_depth])
         self.T_tcp_body = self.T_body_tcp.inverse()
 
+        self.pts = np.array([
+            [0, 0.04, 0],
+            [0, -0.04, 0],
+            [0, 0.04, -0.05],
+            [0, -0.04, -0.05],
+            [0, 0.0, -0.05],
+        ])
+
     def reset(self, T_world_tcp, opening_width=None):
         opening_width = opening_width or self.max_opening_width
         T_world_body = T_world_tcp * self.T_tcp_body
         self.body = self.world.load_urdf(self.urdf_path, T_world_body)
+
+        pybullet.changeVisualShape(self.body.uid, -1, rgbaColor=[1, 1, 1, 0.4])
+        pybullet.changeVisualShape(self.body.uid, 0, rgbaColor=[1, 1, 1, 0.4])
+        pybullet.changeVisualShape(self.body.uid, 1, rgbaColor=[1, 1, 1, 0.4])
+
         pybullet.changeDynamics(self.body.uid, 0, lateralFriction=0.75, spinningFriction=0.05)
         pybullet.changeDynamics(self.body.uid, 1, lateralFriction=0.75, spinningFriction=0.05)
         self.body.set_pose(T_world_body)
+
+        # gripper_pts = T_world_tcp.transform_point(self.pts)
+        # self.world.p.addUserDebugPoints(gripper_pts, len(gripper_pts)*[(1, 0.2, 0.1),], 10)
+
         # sets the position of the COM, not URDF link
         self.constraint = self.world.add_constraint(
             self.body,
@@ -356,13 +384,15 @@ class Gripper(object):
         T_world_body = self.body.get_pose()
         T_world_tcp = T_world_body * self.T_body_tcp
         pos_diff = target.translation - T_world_tcp.translation
-        n_steps = max(int(np.linalg.norm(pos_diff) / eef_step1),10)
+
+        n_steps = max(int(np.linalg.norm(pos_diff) / eef_step1), 10)
         dist_step = pos_diff / n_steps
         dur_step = np.linalg.norm(dist_step) / vel1
-        key_rots = np.stack((T_world_body.rotation.as_quat(),target.rotation.as_quat()),axis=0)
+
+        key_rots = np.stack((T_world_body.rotation.as_quat(), target.rotation.as_quat()),axis=0)
         key_rots = Rotation.from_quat(key_rots)
-        slerp = Slerp([0.0,1.0],key_rots)
-        times = np.linspace(0,1,n_steps)
+        slerp = Slerp([0.0, 1.0], key_rots)
+        times = np.linspace(0, 1, n_steps)
         orientations = slerp(times).as_quat()
         for ii in range(n_steps):
             T_world_tcp.translation += dist_step
@@ -378,13 +408,6 @@ class Gripper(object):
                 self.update_tcp_constraint(T_world_tcp)
             for _ in range(int(dur_step / self.world.dt)):
                 self.world.step()
-
-    def move_gripper_top_down(self):
-        current_pose = self.body.get_pose()
-        pos = current_pose.translation + 0.1
-        flip = Rotation.from_euler('y', np.pi)
-        target_ori = Rotation.identity()*flip
-        self.move_tcp_pose(Transform(rotation=target_ori,translation=pos),abs=True)
 
     def get_distance_from_hand(self,):
         object_id = self.grasp_object_id()
@@ -404,13 +427,15 @@ class Gripper(object):
         grasp_id = self.grasp_object_id()
         current_pose = self.body.get_pose()
 
-        shake_pose = Transform(Rotation.identity(), [0., 0.05, -0.05]) * current_pose
+        a = Transform(Rotation.from_euler('y', np.pi/6), np.zeros(3))
+        b = Transform(Rotation.identity(), [0, 0, 0.12])
+        shake_pose =  b.inverse() * a * b
 
         for _ in range(3):
-            self.move_tcp_pose(target=shake_pose)
+            self.move_tcp_pose(target=current_pose * shake_pose, eef_step1=0.01, vel1=0.3)
             if self.is_dropped(grasp_id,pre_dist):
                 return False
-            self.move_tcp_pose(target=current_pose)
+            self.move_tcp_pose(target=current_pose * shake_pose.inverse(), eef_step1=0.01, vel1=0.3)
             if self.is_dropped(grasp_id,pre_dist):
                 return False
         return True
