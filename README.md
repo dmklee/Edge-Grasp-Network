@@ -8,13 +8,13 @@ Generate 10K grasps for training, either with all objects from graspnet1B (`gras
 objects from graspnet1B (`graspnet1B-train`).
 ```
 python clutter_grasp_data_generator.py --object_set=graspnet1B --num_grasps=10000 --num_objects=1 --seed=0
-python clutter_grasp_data_generator.py --object_set=graspnet1B-train --num_grasps=10000 --num_objects=1 --seed=0
+python clutter_grasp_data_generator.py --object_set=graspnet1B-train --num_grasps=10000 --num_objects=1 --seed=1
 ```
 Generate 1K grasps for evaluation, either with 20% of objects from graspnet1B (`graspnet1B-val`) or
 adversarial objects (`berkeley_adversarial`).
 ```
-python clutter_grasp_data_generator.py --object_set=graspnet1B-val --num_grasps=1000 --num_objects=1 --seed=1
-python clutter_grasp_data_generator.py --object_set=berkeley_adversarial --num_grasps=1000 --num_objects=1 --seed=1
+python clutter_grasp_data_generator.py --object_set=graspnet1B-val --num_grasps=1000 --num_objects=1 --seed=2
+python clutter_grasp_data_generator.py --object_set=berkeley_adversarial --num_grasps=1000 --num_objects=1 --seed=2
 ```
 
 ## Acknowledgement
