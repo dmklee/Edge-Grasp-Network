@@ -80,7 +80,7 @@ def main(args):
 
         pc = pc.voxel_down_sample(voxel_size=0.002)
         vertices = np.asarray(pc.points)
-        if len(vertices) < 1024:
+        if len(vertices) < 2048:
             print("Too few points in pointcloud")
             continue
 
