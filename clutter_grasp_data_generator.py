@@ -1,4 +1,5 @@
 import argparse
+import uuid
 from pathlib import Path
 import numpy as np
 import open3d as o3d
@@ -43,7 +44,7 @@ def main(args):
     sim = ClutterRemovalSim(args.scene, args.object_set, gui=args.gui, rng=rng)
 
     num_grasps = 0
-    scene_id = 0
+    scene_count = 0
     while num_grasps < args.num_grasps:
         sim.reset(args.num_objects)
         sim.save_state()
@@ -142,14 +143,13 @@ def main(args):
         poses = poses[np.concatenate([success_ids, failure_ids])]
         num_grasps += len(poses)
 
-        scene_path = root / f"{scene_id:03d}"
+        scene_count += 1
+        scene_path = root / uuid.uuid4().hex
         scene_path.mkdir(parents=True, exist_ok=True)
         np.save(str(scene_path / "pc.npy"), np.asarray(pc.points).astype(np.float32))
         np.save(str(scene_path / "labels.npy"), labels)
         np.save(str(scene_path / "poses.npy"), poses)
-
-        print(f"Scene_{scene_id}: SR={sr:.2%} | Total={num_grasps}")
-        scene_id += 1
+        print(f"Scene_{scene_count}: SR={sr:.2%} | Total={num_grasps}")
 
 
 if __name__ == "__main__":
