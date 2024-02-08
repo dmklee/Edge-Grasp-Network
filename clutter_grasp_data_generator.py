@@ -196,6 +196,6 @@ if __name__ == "__main__":
         default=False,
         help="If True, include table in point clouds",
     )
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     main(args)
