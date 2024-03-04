@@ -20,9 +20,13 @@ def render_images(sim: ClutterRemovalSim, n: int, rng: np.random.RandomState):
     depth_imgs = np.empty((n, height, width), np.float32)
 
     for i in range(n):
-        r = rng.uniform(1.5, 2.5) * sim.size
-        theta = rng.uniform(np.pi / 4, np.pi / 3)
-        phi = rng.uniform(0.0, 2.0 * np.pi)
+        # r = rng.uniform(1.5, 2.5) * sim.size
+        # theta = rng.uniform(np.pi / 4, np.pi / 3)
+        # phi = rng.uniform(0.0, 2.0 * np.pi)
+        r = 2 * sim.size
+        theta = np.pi / 4
+        # space equally in a circle
+        phi = ((2 * i + 1) / n) * np.pi
         extrinsic = camera_on_sphere(origin, r, theta, phi)
         depth_img = sim.camera.render(extrinsic)[1]
         extrinsics[i] = extrinsic.to_list()
@@ -50,7 +54,8 @@ def main(args):
         sim.save_state()
 
         # render point clouds
-        n = rng.choice(a=[1, 2, 3], p=[0.1, 0.6, 0.3])
+        # n = rng.choice(a=[1, 2, 3], p=[0.1, 0.6, 0.3])
+        n = 3
         depth_imgs, extrinsics, eye = render_images(sim, n, rng)
 
         # reconstrct point cloud using a subset of the images
