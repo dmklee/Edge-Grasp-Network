@@ -50,7 +50,7 @@ def main(args):
     num_grasps = 0
     scene_count = 0
     while num_grasps < args.num_grasps:
-        sim.reset(args.num_objects)
+        obj_ids = sim.reset(args.num_objects)
         sim.save_state()
 
         # render point clouds
@@ -92,22 +92,20 @@ def main(args):
 
         poses = np.eye(4)[None]
         # sample position in collision and random orientation
-        obj_centers = np.array(
-            [
-                sim.world.bodies[i].get_pose().translation
-                for i in range(1, 1 + sim.num_objects)
-            ]
-        )
-        obj_ids = rng.randint(len(obj_centers), size=args.attempts_per_scene)
+        obj_centers = np.array([
+            sim.world.bodies[i].get_pose().translation
+            for i in range(1, 1 + sim.num_objects)
+        ])
+        cur_obj_ids = rng.randint(len(obj_centers), size=args.attempts_per_scene)
 
-        pos = obj_centers[obj_ids] + rng.normal(
-            loc=0, scale=0.015, size=(len(obj_ids), 3)
+        pos = obj_centers[cur_obj_ids] + rng.normal(
+            loc=0, scale=0.015, size=(len(cur_obj_ids), 3)
         )
         euler = rng.uniform(
-            [0, 0, 0], [2 * np.pi, 0.4 * np.pi, 2 * np.pi], size=(len(obj_ids), 3)
+            [0, 0, 0], [2 * np.pi, 0.4 * np.pi, 2 * np.pi], size=(len(cur_obj_ids), 3)
         )
 
-        poses = np.zeros((len(obj_ids), 4, 4))
+        poses = np.zeros((len(cur_obj_ids), 4, 4))
         poses[:, 3, 3] = 1.0
         poses[:, :3, 3] = pos
         poses[:, :3, :3] = (
@@ -140,17 +138,21 @@ def main(args):
         sr = np.mean(labels)
 
         # balance to 50% success/failure
-        success_ids = np.argwhere(labels == True).flatten()
-        failure_ids = np.argwhere(labels == False).flatten()
-        failure_ids = failure_ids[: len(success_ids)]
+        if args.dont_balance_successes:
+            num_grasps += len(poses)
+        else:
+            success_ids = np.argwhere(labels == True).flatten()
+            failure_ids = np.argwhere(labels == False).flatten()
+            failure_ids = failure_ids[: len(success_ids)]
 
-        labels = labels[np.concatenate([success_ids, failure_ids])]
-        poses = poses[np.concatenate([success_ids, failure_ids])]
-        num_grasps += len(poses)
+            labels = labels[np.concatenate([success_ids, failure_ids])]
+            poses = poses[np.concatenate([success_ids, failure_ids])]
+            num_grasps += len(poses)
 
         scene_count += 1
         scene_path = root / uuid.uuid4().hex
         scene_path.mkdir(parents=True, exist_ok=True)
+        np.save(str(scene_path / "obj_ids.npy"), obj_ids)
         np.save(str(scene_path / "pc.npy"), np.asarray(pc.points).astype(np.float32))
         np.save(str(scene_path / "labels.npy"), labels)
         np.save(str(scene_path / "poses.npy"), poses)
@@ -200,6 +202,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="If True, include table in point clouds",
+    )
+    parser.add_argument(
+        "--dont_balance_successes",
+        action="store_true",
+        default=False,
+        help="If True, don't balance successes and failures in dataset to be 50-50%",
     )
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()

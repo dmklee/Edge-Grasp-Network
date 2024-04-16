@@ -14,20 +14,24 @@ class ClutterRemovalSim(object):
     def __init__(self, scene, obj_folder, gui=True, rng=None):
         assert scene in ["pile", "packed"]
         self.urdf_root = Path("./data_robot/urdfs")
-        if '-' in obj_folder:
-            obj_folder, mode = obj_folder.split('-')
-            self.obj_root = Path('./data_robot') / obj_folder
-            obj_files = list(sorted(self.obj_root.glob('*.obj')))
-            L = int(0.8*len(obj_files))
-            self.obj_files = obj_files[:L] if mode=='train' else obj_files[L:]
+        if "-" in obj_folder:
+            obj_folder, mode = obj_folder.split("-")
+            self.obj_root = Path("./data_robot") / obj_folder
+            obj_files = list(sorted(self.obj_root.glob("*.obj")))
+            self.obj_ids = [int(obj.stem.split("_")[1]) for obj in obj_files]
+
+            L = int(0.8 * len(obj_files))
+            self.obj_files = obj_files[:L] if mode == "train" else obj_files[L:]
+            self.obj_ids = self.obj_ids[:L] if mode == "train" else self.obj_ids[L:]
         else:
-            self.obj_root = Path('./data_robot') / obj_folder
-            self.obj_files = list(sorted(self.obj_root.glob('*.obj')))
+            self.obj_root = Path("./data_robot") / obj_folder
+            self.obj_files = list(sorted(self.obj_root.glob("*.obj")))
+            self.obj_ids = [int(obj.stem.split("_")[1]) for obj in self.obj_files]
 
         self.scene = scene
 
         # get the list of urdf files or obj files
-        self.global_scaling = 1.2 if obj_folder == 'berkeley_adversarial' else 1.2
+        self.global_scaling = 1.2 if obj_folder == "berkeley_adversarial" else 1.2
         self.gui = gui
         self.rng = rng or np.random.RandomState()
         self.world = BtWorld(self.gui)
@@ -49,7 +53,7 @@ class ClutterRemovalSim(object):
     def reset(self, object_count, index=None):
         self.world.reset()
         self.world.set_gravity([0.0, 0.0, -9.81])
-        #self.world.p.configureDebugVisualizer(self.world.p.COV_ENABLE_GUI, 0)
+        # self.world.p.configureDebugVisualizer(self.world.p.COV_ENABLE_GUI, 0)
         if self.gui:
             self.world.p.resetDebugVisualizerCamera(
                 cameraDistance=1.0,
@@ -62,18 +66,22 @@ class ClutterRemovalSim(object):
         self.place_table(table_height)
 
         if self.scene == "pile":
-            self.generate_pile_scene(object_count, table_height,True, index=index)
+            obj_ids = self.generate_pile_scene(
+                object_count, table_height, True, index=index
+            )
 
         elif self.scene == "packed":
-            self.generate_packed_scene(object_count, table_height)
+            obj_ids = self.generate_packed_scene(object_count, table_height)
 
         else:
             raise ValueError("Invalid scene argument")
 
+        return obj_ids
+
     def place_table(self, height):
         urdf = self.urdf_root / "setup" / "plane.urdf"
         pose = Transform(Rotation.identity(), [0.15, 0.15, height])
-        self.world.load_urdf(urdf, pose, scale=0.6,table=True)
+        self.world.load_urdf(urdf, pose, scale=0.6, table=True)
 
         # define valid volume for sampling grasps
         lx, ux = 0.02, self.size - 0.02
@@ -82,43 +90,58 @@ class ClutterRemovalSim(object):
         self.lower = np.r_[lx, ly, lz]
         self.upper = np.r_[ux, uy, uz]
 
-    def generate_pile_scene(self, object_count, table_height, return_urdf=False,index=None):
+    def generate_pile_scene(
+        self, object_count, table_height, return_urdf=False, index=None
+    ):
         # place box
         urdf = self.urdf_root / "setup" / "box.urdf"
         pose = Transform(Rotation.identity(), np.r_[0.02, 0.02, table_height])
-        box = self.world.load_urdf(urdf, pose, scale=1.3,table=True)
+        box = self.world.load_urdf(urdf, pose, scale=1.3, table=True)
+        obj_ids = []
         # drop objects
         if index is not None:
             objs = [self.obj_files[index]]
+            obj_ids.append(self.obj_ids[index])
         else:
-            objs = self.rng.choice(self.obj_files, size=object_count)
+            obj_idxs = self.rng.choice(len(self.obj_files), size=object_count)
 
-        #print(urdfs)
+            objs = [self.obj_files[idx] for idx in obj_idxs]
+            obj_ids.append([self.obj_ids[idx] for idx in obj_idxs])
+
+        # print(urdfs)
         for obj in objs:
             rotation = Rotation.random(random_state=self.rng)
 
             xy = self.rng.uniform(1.0 / 3.0 * self.size, 2.0 / 3.0 * self.size, 2)
             pose = Transform(rotation, np.r_[xy, table_height + 0.2])
             scale = self.rng.uniform(0.8, 1.0)
-            self.world.load_obj(obj, pose, scale=self.global_scaling*scale)
+            self.world.load_obj(obj, pose, scale=self.global_scaling * scale)
             self.wait_for_objects_to_rest(timeout=1.0)
 
         # remove box
         self.world.remove_body(box)
         self.remove_and_wait()
 
+        return obj_ids
+
     def generate_packed_scene(self, object_count, table_height):
         attempts = 0
         max_attempts = 12
+        obj_ids = []
         while self.num_objects < object_count and attempts < max_attempts:
             self.save_state()
-            obj = self.rng.choice(self.obj_files)
+            obj_idx = self.rng.choice(len(self.obj_files))
+
+            obj = self.obj_files[obj_idx]
+            obj_id = self.obj_ids[obj_idx]
 
             x = self.rng.uniform(0.08, 0.22)
             y = self.rng.uniform(0.08, 0.22)
             z = 1.0
             if self.rng.random() < 0.3:
-                rotation = Rotation.from_euler('xz', (-np.pi/2, self.rng.uniform(0, 2*np.pi)))
+                rotation = Rotation.from_euler(
+                    "xz", (-np.pi / 2, self.rng.uniform(0, 2 * np.pi))
+                )
             else:
                 rotation = Rotation.random(random_state=self.rng)
             pose = Transform(rotation, np.r_[x, y, z])
@@ -136,6 +159,10 @@ class ClutterRemovalSim(object):
             else:
                 self.remove_and_wait()
             attempts += 1
+
+        obj_ids.append(obj_id)
+
+        return obj_ids
 
     def acquire_tsdf(self, n, N=None):
         """Render synthetic depth images from n viewpoints and integrate into a TSDF.
@@ -162,11 +189,11 @@ class ClutterRemovalSim(object):
 
         return tsdf, high_res_tsdf.get_cloud(), timing
 
-    def rotate(self, theta, eef_step=0.05, vel=0.80, axis='z'):
+    def rotate(self, theta, eef_step=0.05, vel=0.80, axis="z"):
         # eef_step=0.05, vel=0.40,
         T_world_body = self.gripper.body.get_pose()
         T_world_tcp = T_world_body * self.gripper.T_body_tcp
-        #pre_position = T_world_tcp.translation
+        # pre_position = T_world_tcp.translation
         diff = theta
         n_step = int(abs(theta) / eef_step)
         if n_step == 0:
@@ -175,22 +202,23 @@ class ClutterRemovalSim(object):
         dur_step = abs(dist_step) / vel
         for _ in range(n_step):
             # T_world_tcp = Transform(Rotation.from_euler(axis,dist_step),[0.0,0.0,0.0]) * T_world_tcp
-            T_world_tcp = T_world_tcp * Transform(Rotation.from_euler(axis, -dist_step), [0.0, 0.0, 0.0])
+            T_world_tcp = T_world_tcp * Transform(
+                Rotation.from_euler(axis, -dist_step), [0.0, 0.0, 0.0]
+            )
             self.gripper.update_tcp_constraint(T_world_tcp)
             for _ in range(int(dur_step / self.world.dt)):
                 self.world.step()
 
-    def advance_sim(self,frames):
+    def advance_sim(self, frames):
         for _ in range(frames):
             self.world.step()
 
-    def gripper_dance(self,n_rotations=9):
-        #center_pose = grasp.pose
-        #yaws = np.linspace(0.0, np.pi, 9, endpoint=False)
-        yaw = np.pi/np.float(n_rotations)
+    def gripper_dance(self, n_rotations=9):
+        # center_pose = grasp.pose
+        # yaws = np.linspace(0.0, np.pi, 9, endpoint=False)
+        yaw = np.pi / np.float(n_rotations)
         for _ in range(n_rotations):
-            self.rotate(yaw,axis='y')
-
+            self.rotate(yaw, axis="y")
 
     def execute_grasp(self, grasp_pose: Transform, remove=True, allow_contact=True):
 
@@ -211,14 +239,14 @@ class ClutterRemovalSim(object):
                 shake_label = False
                 if self.check_success(self.gripper):
                     shake_label = self.gripper.shake_hand(dis_from_hand)
-                    #print('finish shaking')
+                    # print('finish shaking')
                 if self.check_success(self.gripper) and shake_label:
                     result = True, self.gripper.read()
                     if remove:
                         contacts = self.world.get_contacts(self.gripper.body)
                         self.world.remove_body(contacts[0].bodyB)
                 else:
-                    result =  False, self.gripper.max_opening_width
+                    result = False, self.gripper.max_opening_width
             else:
                 result = False, self.gripper.max_opening_width
 
@@ -266,13 +294,16 @@ class ClutterRemovalSim(object):
 
 class Gripper(object):
     """Simulated Panda hand."""
+
     def __init__(self, world):
         self.world = world
         self.urdf_path = Path("./data_robot/urdfs/panda/hand.urdf")
 
         self.max_opening_width = 0.08
         self.finger_depth = 0.05
-        self.T_body_tcp = Transform(Rotation.identity(), [0.0, 0.0, 0.015 + self.finger_depth])
+        self.T_body_tcp = Transform(
+            Rotation.identity(), [0.0, 0.0, 0.015 + self.finger_depth]
+        )
         self.T_tcp_body = self.T_body_tcp.inverse()
 
         self.pts = np.array([
@@ -292,8 +323,12 @@ class Gripper(object):
         pybullet.changeVisualShape(self.body.uid, 0, rgbaColor=[1, 1, 1, 0.4])
         pybullet.changeVisualShape(self.body.uid, 1, rgbaColor=[1, 1, 1, 0.4])
 
-        pybullet.changeDynamics(self.body.uid, 0, lateralFriction=0.75, spinningFriction=0.05)
-        pybullet.changeDynamics(self.body.uid, 1, lateralFriction=0.75, spinningFriction=0.05)
+        pybullet.changeDynamics(
+            self.body.uid, 0, lateralFriction=0.75, spinningFriction=0.05
+        )
+        pybullet.changeDynamics(
+            self.body.uid, 1, lateralFriction=0.75, spinningFriction=0.05
+        )
         self.body.set_pose(T_world_body)
 
         # gripper_pts = T_world_tcp.transform_point(self.pts)
@@ -367,7 +402,7 @@ class Gripper(object):
             # contact = contacts[0]
             # get rid body
             grased_id = contact.bodyB
-            if grased_id.uid!=self.body.uid:
+            if grased_id.uid != self.body.uid:
                 return grased_id.uid
 
     def move(self, width):
@@ -389,7 +424,9 @@ class Gripper(object):
         dist_step = pos_diff / n_steps
         dur_step = np.linalg.norm(dist_step) / vel1
 
-        key_rots = np.stack((T_world_body.rotation.as_quat(), target.rotation.as_quat()),axis=0)
+        key_rots = np.stack(
+            (T_world_body.rotation.as_quat(), target.rotation.as_quat()), axis=0
+        )
         key_rots = Rotation.from_quat(key_rots)
         slerp = Slerp([0.0, 1.0], key_rots)
         times = np.linspace(0, 1, n_steps)
@@ -409,15 +446,21 @@ class Gripper(object):
             for _ in range(int(dur_step / self.world.dt)):
                 self.world.step()
 
-    def get_distance_from_hand(self,):
+    def get_distance_from_hand(
+        self,
+    ):
         object_id = self.grasp_object_id()
         pos, _ = pybullet.getBasePositionAndOrientation(object_id)
-        dist_from_hand = np.linalg.norm(np.array(pos) - np.array(self.body.get_pose().translation))
+        dist_from_hand = np.linalg.norm(
+            np.array(pos) - np.array(self.body.get_pose().translation)
+        )
         return dist_from_hand
 
-    def is_dropped(self,object_id,prev_dist):
-        pos,_ = pybullet.getBasePositionAndOrientation(object_id)
-        dist_from_hand = np.linalg.norm(np.array(pos) - np.array(self.body.get_pose().translation))
+    def is_dropped(self, object_id, prev_dist):
+        pos, _ = pybullet.getBasePositionAndOrientation(object_id)
+        dist_from_hand = np.linalg.norm(
+            np.array(pos) - np.array(self.body.get_pose().translation)
+        )
         if np.isclose(prev_dist, dist_from_hand, atol=0.1):
             return False
         else:
@@ -427,15 +470,19 @@ class Gripper(object):
         grasp_id = self.grasp_object_id()
         current_pose = self.body.get_pose()
 
-        a = Transform(Rotation.from_euler('y', np.pi/6), np.zeros(3))
+        a = Transform(Rotation.from_euler("y", np.pi / 6), np.zeros(3))
         b = Transform(Rotation.identity(), [0, 0, 0.12])
-        shake_pose =  b.inverse() * a * b
+        shake_pose = b.inverse() * a * b
 
         for _ in range(3):
-            self.move_tcp_pose(target=current_pose * shake_pose, eef_step1=0.01, vel1=0.3)
-            if self.is_dropped(grasp_id,pre_dist):
+            self.move_tcp_pose(
+                target=current_pose * shake_pose, eef_step1=0.01, vel1=0.3
+            )
+            if self.is_dropped(grasp_id, pre_dist):
                 return False
-            self.move_tcp_pose(target=current_pose * shake_pose.inverse(), eef_step1=0.01, vel1=0.3)
-            if self.is_dropped(grasp_id,pre_dist):
+            self.move_tcp_pose(
+                target=current_pose * shake_pose.inverse(), eef_step1=0.01, vel1=0.3
+            )
+            if self.is_dropped(grasp_id, pre_dist):
                 return False
         return True
