@@ -26,7 +26,10 @@ class ClutterRemovalSim(object):
         else:
             self.obj_root = Path("./data_robot") / obj_folder
             self.obj_files = list(sorted(self.obj_root.glob("*.obj")))
-            self.obj_ids = [int(obj.stem.split("_")[1]) for obj in self.obj_files]
+            if obj_folder == "berkeley_adversarial":
+                self.obj_ids = np.arange(100, 100 + len(self.obj_files))
+            else:
+                self.obj_ids = [int(obj.stem.split("_")[1]) for obj in self.obj_files]
 
         self.scene = scene
 
